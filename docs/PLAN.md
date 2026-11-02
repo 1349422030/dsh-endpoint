@@ -101,3 +101,17 @@ dsh-endpoint/
 
 - 改完源码要重启 `endpoint-test` 实例才生效（插件模块在启动时加载，不是热更新）。
 - 冒烟：`curl http://127.0.0.1:8789/health`，再按阶段验收具体路由。
+## 7. 完成情况（2026-11-02）
+
+P1–P6 全部落地并验收：
+
+| 阶段 | 内容 | 验证 |
+| --- | --- | --- |
+| P1 | 文本主路（非流式 + SSE），走 ctx.llm.stream | 实测 200，usage 透传 |
+| P2 | /v1/models 与 /v1/models/{id}，capabilities 投影 | 7 个模型，含 context_length/max_output_tokens/模态/思考档位 |
+| P3 | 图像（data: base64 → admitPromptContent） | 实测送达；纯文本模型前置拦 400 images_unsupported |
+| P4 | tools 400、历史折叠、上下文守卫、max_tokens 夹取 | 负向用例全过 |
+| P5 | 单测（node --test，19 个） | 19/19 |
+| P6 | 设置页 client.js + Host 状态路由 + README | 客户端 bundle 由 GUI 预载，安装级冒烟通过 |
+
+遗留（已在 README 声明）：无 tokenizer 精确计费、附件无回收、top_p 等采样参数不透传。
