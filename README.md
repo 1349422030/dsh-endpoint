@@ -4,7 +4,7 @@
 
 它不是又一个 provider 桥接层。这里没有第二份 API key、第二个 base URL、第二套兼容层：每个请求都通过 `ctx.llm.stream()` 完成，也就是 agent loop 自己在用的那个与 provider、模型无关的入口。你的 profile 能跟谁对话——需要自定义 `thinkingFormat` 的 provider、挑剔 developer 角色的上游、每个模型不同的思考档位——这个端点就能服务谁，profile 里的重试策略和图像预算也已经替你生效。
 
-重点在元数据。聊天客户端没法凭空猜到某个模型的上下文窗口有多大、输出上限是多少、收不收图像、声明了哪些思考档位。这个端点把这些从 profile 里读出来并公布出去，客户端于是能发现事实，而不是硬编码假设。
+在"转发"之外，它多做三件事。其一，把模型的事实广播出去：聊天客户端没法凭空猜到某个模型的上下文窗口多大、输出上限多少、收不收图像、声明了哪些思考档位，`/v1/models` 就把这些从 profile 里读出来一并给出。其二，接受图像输入，并按模型声明的模态在图片落盘之前拦截。其三，把"要多少思考"翻译成模型真正声明过的档位，每一次替换都写进 `warnings`。至于可选的模型、`reasoning_effort`、`max_tokens` 这些常规参数，它和一般 OpenAI 兼容端点一样处理。
 
 ## 提供哪些路由
 
@@ -126,6 +126,4 @@ npm test
 
 ## 致谢
 
-本插件的起点是 [dsh-model-endpoint](https://github.com/Xxsttb/dsh-model-endpoint)（MIT）：插件骨架、Bearer 优先 / `x-api-key` 兜底的鉴权顺序、`/health` 描述自身网络姿态的做法，以及"把 profile 里已经配好的模型当作 OpenAI 接口对外提供"这个想法，都来自它。
-
-两者的定位不同：它发布的是当前正在使用的那**一个**模型；这里提供的是 profile 能路由的**整张模型目录**，并逐个投影能力（上下文窗口、输出上限、输入模态、声明的思考档位），再加上图像输入、思考档位协商和流式输出。因此代码是重写的，没有沿用它的实现。
+本插件的起点是 [dsh-model-endpoint](https://github.com/Xxsttb/dsh-model-endpoint)（MIT）：插件骨架、Bearer 优先 / `x-api-key` 兜底的鉴权顺序、`/health` 描述自身网络姿态的写法，以及"把 profile 里配好的模型当作 OpenAI 接口对外提供"这个想法，都来自它。实现是为上面那些差异重写的，没有沿用它的代码。
