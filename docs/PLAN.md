@@ -83,3 +83,21 @@ dsh-endpoint/
 
 1. 阶段划分与工作量是否接受（尤其"每阶段验收后再进下一步"这个节奏）
 2. P0 完成后先推 GitHub 还是全程只在本地，最后一次性推
+## 6. 开发 / 验收环境（2026-11-02 调整）
+
+**不在 web profile 里加载本插件。** web profile 是当前正在用的生产面，出 bug 会波及它。
+改为独立的测试 profile：
+
+- profile 名：`endpoint-test`（位于 `C:\Users\Administrator\.dsh\profiles\endpoint-test`），由 web 模板初始化：
+  bundles = `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app` + `dsh-endpoint`。
+- 该 profile 的 `cordis.patch.yml` 只放三样：`agent-default-model`、`llm-pi-ai`（与 web 同一套 commandcode 路由，5 个模型全量，便于测能力门控）、`dsh-endpoint` 配置。**不挂任何第三方插件**，避免干扰排错。
+- 实例：`dsh --profile endpoint-test --port 39840 --no-open`（GUI/调试面），插件监听 **8789**（不是 8788，避免与残留实例抢端口）。
+- 与 web profile 共用同一个 `DSH_HOME`（`C:\Users\Administrator\.dsh`），即共用 sessions/storages/.credentials.yaml（含 `COMMANDCODE_API_KEY`）。这是 2026-11-02 用户选择的方案：省掉一份凭证副本，代价是两个实例共享存储目录。
+- web profile 里的 `dsh-endpoint` 已移除（`dsh plugin --profile web remove dsh-endpoint`），8788 已关闭。
+
+注：§2 的文件树是立项时的初版，实际落地按 2026-11-02 的决定拆成 6 文件（plugin / http / protocol / capabilities / chat / client），见 lib/ 目录现状。
+
+### 验收方式
+
+- 改完源码要重启 `endpoint-test` 实例才生效（插件模块在启动时加载，不是热更新）。
+- 冒烟：`curl http://127.0.0.1:8789/health`，再按阶段验收具体路由。
