@@ -26,7 +26,17 @@ test('a model with no declared metadata degrades to nulls instead of guesses', a
     assert.equal(card.architecture, null);
     assert.equal(card.top_provider, null);
     assert.equal(card.reasoning, null);
-    assert.deepEqual(card.supported_parameters, ['max_tokens', 'stop', 'temperature']);
+    assert.deepEqual(card.supported_parameters, ['max_tokens', 'stop', 'temperature', 'tools']);
+});
+
+test('supported_parameters advertises tools, which the endpoint passes through', async () => {
+    const list = await listModels(fakeCtx(fakeInfo()));
+    const card = list.data[0];
+    assert.ok(card.supported_parameters.includes('tools'));
+    assert.deepEqual(
+        card.supported_parameters,
+        ['max_tokens', 'stop', 'temperature', 'tools', 'reasoning', 'reasoning_effort'],
+    );
 });
 
 test('a model is addressable by bare id and by provider-qualified id', async () => {

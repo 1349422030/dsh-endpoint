@@ -37,7 +37,7 @@ OpenAI 的 `model` 对象只有 `id`、`object`、`created`、`owned_by`。它�
     "output_modalities": ["text"]
   },
   "top_provider": { "context_length": 1000000, "max_completion_tokens": 328000 },
-  "supported_parameters": ["max_tokens", "stop", "temperature", "reasoning", "reasoning_effort"],
+  "supported_parameters": ["max_tokens", "stop", "temperature", "tools", "reasoning", "reasoning_effort"],
   "reasoning": {
     "mandatory": false,
     "default_enabled": true,
@@ -49,7 +49,7 @@ OpenAI 的 `model` 对象只有 `id`、`object`、`created`、`owned_by`。它�
 
 profile 没有声明的字段一律是 `null`（`architecture` 也是），不会编一个数字出来。`null` 的含义是"用你自己的默认值"，不是"零"。
 
-`supported_parameters` 只列这个端点真的会执行的参数；`tools` 不在里面，因为它会**拒绝** `tools` 而不是假装支持。
+`supported_parameters` 只列这个端点真的会执行的参数。`tools` 也在其中：工具声明会被转发给模型，模型想发起的调用会原样回传给调用方——执行永远不会发生在这个端点里。
 
 ### 实际生效的值在响应头里
 
@@ -65,12 +65,23 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 忽略响应头的客户端拿到的就是一个普通的 OpenAI 响应；需要真相的客户端读头即可。流式请求同理，头在第一个字节之前就已经发出。
 
+## 工具调用：声明上行，调用下行
+
+工具属于调用方。一个 agent 客户端每轮都会带上它自己的工具集，这个端点只做两件事：把声明转成 Harness 的 `ToolSchema` 交给模型，把模型发起的 `tool_calls` 原样交回调用方。**它不执行任何工具**，也不会把本 profile 里 agent 自己的工具借出去——那些工具、它们的审批策略和执行权始终留在这个 DSH 进程里。
+
+所以一个完整的工具调用是两轮、跨两个系统：
+
+1. 客户端发 `tools` + 对话历史 → 模型回 `tool_calls`（`finish_reason: "tool_calls"`）；
+2. 客户端**自己**执行工具，把结果作为 `role: "tool"` 连同历史再发一轮 → 模型给出最终答复。
+
+协议细节都按 OpenAI 的形状走：`assistant.tool_calls` 会映射成真正的 tool-call 块（不再是折成文本），`role: "tool"` 映射成工具结果消息，`arguments` 原样透传不重新序列化（空串按 `{}` 处理，因为无参数调用就是这么发的）。`tool_choice` 和 `parallel_tool_calls` 在 Harness 的请求结构里没有对应位置，接受但忽略，并写进 `x-dsh-warning`。
+
 ## 接客户端之前值得知道的行为
 
 - **图像。** 只接受 `data:` base64 部件，形式为 `image_url` 或 `input_image`。它们经由 Harness 的附件库落盘，因此 profile 自己的限额（`maxImageBytes`、`maxImagesPerMessage`、`maxMessageImageBytes`、`maxImagePixels`、`maxImageDimension`、允许的媒体类型）全部生效——这个端点不自造任何数字。元数据里没有列出 `image` 的模型会在**写入磁盘之前**被拒：`400 images_unsupported`。远程 URL 一律拒绝，返回 `400 image_url_unsupported`，因为代抓远程图会把端点变成 SSRF 通道。
 - **思考。** `reasoning_effort`、`enable_thinking`、`{"reasoning": {"enabled": ...}}` 三种写法都认。发出去的档位一定是模型真正声明过的；未知档位名会就近映射到最近的声明档位，"关闭"在没有关闭档的模型上退化为它声明的最低档，每一次替换都写进 `x-dsh-warning` 响应头。思考内容以 `reasoning_content` 返回，流式和非流式都有。
 - **长度。** `max_tokens` 只允许往下调。超过模型声明上限的值会被夹到上限并写进 `x-dsh-warning` 响应头。明显超出上下文窗口的 prompt 在发给上游之前就被拒：`400 context_length_exceeded`。估算方式是字符数/4——这个端点没有 tokenizer，所以那个数字是一道保险，不是对 prompt 的精确计费。
-- **工具。** 不提供。请求里带 `tools` 直接 `400 tools_unsupported`。而 `messages` 里已有的助手 `tool_calls` 和 `role: "tool"` 条目会被折成可读文本（`[tool call …]`、`[tool result …]`）而不是丢掉，这样一段用过工具的对话仍然是连贯的。
+- **工具。** 见下一节：声明上行、调用下行，端点自己从不执行。
 - **用量。** 上游报了就直接透传；没报就估算并标 `"estimated": true`。流式里 usage 挂在最后一个 chunk 上、与 `choices` 平级，这是 OpenAI schema 的规定位置。
 - **流式中途出错。** 此时响应头早已发出，错误以 `data: {"error": {...}}` 送达，之后仍然有 `data: [DONE]`——流总是干净收尾。
 - **透传不了的参数。** `top_p`、`response_format`、`logprobs`、`seed`、`presence_penalty`、`frequency_penalty` 在 Harness 的请求结构里没有对应位置。它们会被接受但忽略，而不是假装生效；思考开启时 `temperature` 会被丢弃，并在 `x-dsh-warning` 里说明。
@@ -123,11 +134,11 @@ dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 npm test
 ```
 
-覆盖消息转换与工具历史折叠、能力投影、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、tools 拒绝、图像模态门、输出上限夹取、未知模型上报。
+覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
 
 ## 状态
 
-版本 0.1.0，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传。
+版本 0.1.0，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
 
 ## 致谢
 
