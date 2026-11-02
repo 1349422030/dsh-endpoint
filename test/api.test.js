@@ -7,7 +7,7 @@ import { fakeCtx, fakeInfo, startServer, textChunks } from './helpers.js';
  * POST one JSON body and parse the response.
  * @param {string} url - server base URL.
  * @param {object} body - request body.
- * @returns {Promise<{status: number, json: object, text: string}>} the answer.
+ * @returns {Promise<{status: number, json: object, text: string, headers: Headers}>} the answer.
  */
 async function post(url, body) {
     const response = await fetch(`${url}/v1/chat/completions`, {
@@ -22,7 +22,7 @@ async function post(url, body) {
     } catch {
         json = undefined;
     }
-    return { status: response.status, json, text };
+    return { status: response.status, json, text, headers: response.headers };
 }
 
 test('a plain completion answers in the OpenAI shape', async () => {
@@ -40,6 +40,10 @@ test('a plain completion answers in the OpenAI shape', async () => {
         assert.equal(answer.json.choices[0].message.content, 'Hello there.');
         assert.equal(answer.json.choices[0].message.reasoning_content, 'thinking…');
         assert.equal(answer.json.choices[0].finish_reason, 'stop');
+        // The body stays a plain OpenAI completion: no invented fields.
+        assert.equal(answer.json.dsh, undefined);
+        assert.equal(answer.json.warnings, undefined);
+        assert.equal(answer.headers.get('x-dsh-provider'), 'p');
         assert.deepEqual(answer.json.usage, { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 });
         // The effort really reached the provider, translated to its own id.
         assert.equal(ctx.calls[0].reasoningEffort, 'low');
@@ -126,7 +130,7 @@ test('an output limit above the model ceiling is clamped and reported', async ()
         });
         assert.equal(answer.status, 200);
         assert.equal(ctx.calls[0].maxTokens, 1_000);
-        assert.ok(answer.json.warnings.some((warning) => /max_tokens 999999/.test(warning)));
+        assert.match(answer.headers.get('x-dsh-warning') ?? '', /max_tokens 999999/);
     } finally {
         await server.close();
     }
