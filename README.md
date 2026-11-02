@@ -1,35 +1,25 @@
 # dsh-endpoint
 
-Serve the models **this DeepSeek Harness profile is already configured for** as an
-OpenAI-compatible HTTP endpoint.
+把这个 DeepSeek Harness profile **已经配置好的模型**，以 OpenAI 兼容的 HTTP 接口对外提供。
 
-It is not another provider bridge. There is no second API key store, no second
-base URL, and no second compat layer: every request is answered through
-`ctx.llm.stream()`, the same provider- and model-neutral entry point the agent
-loop uses. Whatever your profile can talk to — providers that need a custom
-`thinkingFormat`, developer-role quirks, per-model reasoning efforts — this
-endpoint can serve, with the profile's retries and image budget already applied.
+它不是又一个 provider 桥接层。这里没有第二份 API key、第二个 base URL、第二套兼容层：每个请求都通过 `ctx.llm.stream()` 完成，也就是 agent loop 自己在用的那个与 provider、模型无关的入口。你的 profile 能跟谁对话——需要自定义 `thinkingFormat` 的 provider、挑剔 developer 角色的上游、每个模型不同的思考档位——这个端点就能服务谁，profile 里的重试策略和图像预算也已经替你生效。
 
-The point is the metadata. Chat clients cannot guess a model's context window,
-its output ceiling, whether it accepts images, or which reasoning levels it
-declares. This endpoint reads all of that from the profile and publishes it, so a
-client discovers the truth instead of hard-coding assumptions.
+重点在元数据。聊天客户端没法凭空猜到某个模型的上下文窗口有多大、输出上限是多少、收不收图像、声明了哪些思考档位。这个端点把这些从 profile 里读出来并公布出去，客户端于是能发现事实，而不是硬编码假设。
 
-## What it serves
+## 提供哪些路由
 
-| Route | Purpose |
+| 路由 | 作用 |
 | --- | --- |
-| `POST /v1/chat/completions` | One completion, streaming or not |
-| `GET /v1/models` | Every model the profile can route |
-| `GET /v1/models/{id}` | One model, with its capability details |
-| `GET /health` | Whether the listener is up, and who can reach it |
+| `POST /v1/chat/completions` | 单轮补全，可流式 |
+| `GET /v1/models` | profile 能路由的全部模型 |
+| `GET /v1/models/{id}` | 单个模型，含能力明细 |
+| `GET /health` | 监听是否在跑，以及谁能连上 |
 
-Base URL: `http://127.0.0.1:8788/v1`.
+Base URL：`http://127.0.0.1:8788/v1`。
 
-## What a client gets that plain OpenAI does not have
+## 相比原生 OpenAI 多给客户端的东西
 
-`/v1/models` and `/v1/models/{id}` carry a non-standard `capabilities` object
-alongside the usual fields:
+`/v1/models` 与 `/v1/models/{id}` 在常规字段之外带一个非标准的 `capabilities` 对象：
 
 ```json
 {
@@ -53,12 +43,9 @@ alongside the usual fields:
 }
 ```
 
-A field the profile does not declare is `null` (or `null` for
-`input_modalities`), never a made-up number: `null` means "ask your own
-default", not "zero".
+profile 没有声明的字段一律是 `null`（`input_modalities` 也是 `null`），不会编一个数字出来。`null` 的含义是"用你自己的默认值"，不是"零"。
 
-Every completion also echoes what really happened, so a client never has to
-assume it got what it asked for:
+每次补全还会回显实际发生了什么，客户端不必假设自己拿到了想要的东西：
 
 ```json
 {
@@ -67,60 +54,27 @@ assume it got what it asked for:
     "model": "deepseek/deepseek-v4.1-flash",
     "reasoning_effort": "high",
     "thinking": true,
-    "capabilities": { "...": "same object as above" }
+    "capabilities": { "...": "与上面同一个对象" }
   }
 }
 ```
 
-## Behaviour worth knowing before you wire it up
+## 接客户端之前值得知道的行为
 
-- **Images.** Only `data:` base64 parts are accepted, as `image_url` or
-  `input_image` parts. They are admitted through the Harness attachment store,
-  so the profile's own limits (`maxImageBytes`, `maxImagesPerMessage`,
-  `maxMessageImageBytes`, `maxImagePixels`, `maxImageDimension`, allowed media
-  types) apply — this endpoint invents no numbers of its own. A model whose
-  metadata does not list `image` is refused with `400 images_unsupported`
-  *before* anything is written to disk. Remote URLs are refused with
-  `400 image_url_unsupported`, because fetching them would turn the endpoint into
-  an SSRF vector.
-- **Reasoning.** `reasoning_effort`, `enable_thinking`, and
-  `{"reasoning": {"enabled": ...}}` are all understood. Only efforts the model
-  actually declares are ever sent; unknown names are mapped to the nearest
-  declared level, "off" falls back to the lowest level a model without an off
-  switch declares, and every substitution is reported in `warnings`. Think output
-  is returned as `reasoning_content`, both streaming and not.
-- **Length.** `max_tokens` may only be lowered. Anything above the model's
-  declared ceiling is clamped to it and reported in `warnings`. A prompt that
-  plainly exceeds the context window is rejected with
-  `400 context_length_exceeded` before it is sent upstream. The estimate is
-  characters/4 — this endpoint has no tokenizer, so the number is a guard, not an
-  accounting of the exact prompt.
-- **Tools.** Not served. A request carrying `tools` is rejected with
-  `400 tools_unsupported`. Assistant `tool_calls` and `role: "tool"` entries in
-  `messages` are folded into readable text (`[tool call …]`, `[tool result …]`)
-  instead of being dropped, so a conversation that used tools stays coherent.
-- **Usage.** Passed through when the provider reports it; estimated and marked
-  `"estimated": true` when it does not. In a stream the usage rides on the final
-  chunk as a sibling of `choices`, as the OpenAI schema has it.
-- **Failures mid-stream.** Headers are already out, so the error arrives as
-  `data: {"error": {...}}` followed by `data: [DONE]` — the stream is always
-  terminated cleanly.
-- **Not carried through.** `top_p`, `response_format`, `logprobs`, `seed`,
-  `presence_penalty`, and `frequency_penalty` have no equivalent in the Harness
-  request shape. They are accepted and ignored rather than silently pretended;
-  `temperature` is dropped whenever reasoning is active, and the response says so
-  in `warnings`.
-- **Attachments are not collected.** Images admitted for a request stay in the
-  Harness attachment store; the store has no retention policy yet, so a
-  long-running endpoint accumulates them. Nothing here deletes them.
+- **图像。** 只接受 `data:` base64 部件，形式为 `image_url` 或 `input_image`。它们经由 Harness 的附件库落盘，因此 profile 自己的限额（`maxImageBytes`、`maxImagesPerMessage`、`maxMessageImageBytes`、`maxImagePixels`、`maxImageDimension`、允许的媒体类型）全部生效——这个端点不自造任何数字。元数据里没有列出 `image` 的模型会在**写入磁盘之前**被拒：`400 images_unsupported`。远程 URL 一律拒绝，返回 `400 image_url_unsupported`，因为代抓远程图会把端点变成 SSRF 通道。
+- **思考。** `reasoning_effort`、`enable_thinking`、`{"reasoning": {"enabled": ...}}` 三种写法都认。发出去的档位一定是模型真正声明过的；未知档位名会就近映射到最近的声明档位，"关闭"在没有关闭档的模型上退化为它声明的最低档，每一次替换都记在 `warnings` 里。思考内容以 `reasoning_content` 返回，流式和非流式都有。
+- **长度。** `max_tokens` 只允许往下调。超过模型声明上限的值会被夹到上限并写进 `warnings`。明显超出上下文窗口的 prompt 在发给上游之前就被拒：`400 context_length_exceeded`。估算方式是字符数/4——这个端点没有 tokenizer，所以那个数字是一道保险，不是对 prompt 的精确计费。
+- **工具。** 不提供。请求里带 `tools` 直接 `400 tools_unsupported`。而 `messages` 里已有的助手 `tool_calls` 和 `role: "tool"` 条目会被折成可读文本（`[tool call …]`、`[tool result …]`）而不是丢掉，这样一段用过工具的对话仍然是连贯的。
+- **用量。** 上游报了就直接透传；没报就估算并标 `"estimated": true`。流式里 usage 挂在最后一个 chunk 上、与 `choices` 平级，这是 OpenAI schema 的规定位置。
+- **流式中途出错。** 此时响应头早已发出，错误以 `data: {"error": {...}}` 送达，之后仍然有 `data: [DONE]`——流总是干净收尾。
+- **透传不了的参数。** `top_p`、`response_format`、`logprobs`、`seed`、`presence_penalty`、`frequency_penalty` 在 Harness 的请求结构里没有对应位置。它们会被接受但忽略，而不是假装生效；思考开启时 `temperature` 会被丢弃，响应会在 `warnings` 里说明。
+- **附件不会回收。** 为请求落入附件库的图片会一直留在那里；附件库目前还没有保留策略，所以长期运行的端点会持续累积。这里不负责删除。
 
-## Network posture
+## 网络姿态
 
-No TLS is served here. The default bind is `127.0.0.1`; to reach it from another
-machine, bind a wider address **and** set an API key, then put a reverse proxy in
-front for TLS.
+这里不提供 TLS。默认只绑 `127.0.0.1`；要让别的机器连上，就绑更宽的地址**并且**设置 API key，再在前面放一层反代来终止 TLS。
 
-`/health` states the posture instead of leaving it to be guessed:
+`/health` 会把姿态讲明白，而不是让人猜：
 
 ```json
 {
@@ -134,17 +88,11 @@ front for TLS.
 }
 ```
 
-A non-loopback bind with no API key produces a warning in both `/health` and the
-plugin log. CORS is answered for browser clients: `OPTIONS` is handled before the
-key check, and `access-control-allow-origin` follows the `corsOrigin` setting
-(`*` by default).
+绑非回环地址却不设 API key，会在 `/health` 和插件日志里各留一条警告。浏览器客户端的 CORS 也照顾了：`OPTIONS` 在鉴权之前处理，`access-control-allow-origin` 跟随 `corsOrigin` 设置（默认 `*`）。
 
-## Settings
+## 设置页
 
-The settings page has the four fields worth changing while debugging — enable,
-bind address, port, API key — and it updates them live: the listener rebinds
-without a reload. Everything else (`requestTimeoutMs`, fallback `provider` /
-`model`, `corsOrigin`) lives in the profile's `cordis.patch.yml`.
+设置页只放调试时值得改的四个字段——启用、绑定地址、端口、API key——并且即时生效：监听会重新绑定，不需要重启。其余配置（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`）写在 profile 的 `cordis.patch.yml` 里：
 
 ```yaml
 - id: dsh-endpoint
@@ -156,35 +104,33 @@ without a reload. Everything else (`requestTimeoutMs`, fallback `provider` /
     apiKey: ''
 ```
 
-## Install
+## 安装
+
+本插件不构建、不打包，直接用源码；需要先在 DSH 里装好（`dsh` 命令可用）。
 
 ```sh
-dsh plugin --profile web add "I:/Document/DeepSeek Harness/WorkSpace/dsh-endpoint"
+dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 ```
 
-Then check it:
+装好后检查一下：
 
 ```sh
 curl http://127.0.0.1:8788/health
 curl http://127.0.0.1:8788/v1/models
 ```
 
-## Tests
+> 端口默认 8788。如果你已经在用别的 profile 跑同一个插件，记得改端口，否则会遇到端口占用。
+>
+> 注意 `dsh plugin` 只是把参数转发给 pnpm。**私有的 GitHub 仓库装不了**：pnpm 会先把仓库地址规范化成 https 去 `git ls-remote`，私有库在无凭据时会卡在交互式认证上。本仓库是公开的，所以上面这条命令可用；本地开发时也可以直接用目录路径 `add <本地目录>`。
+
+## 测试
 
 ```sh
 npm test
 ```
 
-The suite links the host's own `@deepseek-ai/dsh-llm` and `dsh-attachment` into
-`node_modules` (they are supplied by the Harness at runtime, not installed here),
-then runs `node --test`. It covers message conversion and tool-history folding,
-capability projection, effort translation, and the HTTP surface end to end over a
-real socket — JSON, SSE, the tools refusal, the image modality gate, the output
-clamp, and unknown-model reporting.
+测试套件会把宿主自带的 `@deepseek-ai/dsh-llm` 和 `dsh-attachment` 链接进 `node_modules`（它们由 Harness 在运行时提供，不在本仓库重复安装），然后跑 `node --test`。覆盖范围：消息转换与工具历史折叠、能力投影、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端——JSON、SSE、tools 拒绝、图像模态门、输出上限夹取、未知模型上报。
 
-## Status
+## 状态
 
-Version 0.1.0, feature-complete for the scope above. Known limitations, all
-stated rather than hidden: no tokenizer for exact prompt accounting, no
-attachment retention policy, and no passthrough of sampling parameters the
-Harness request shape does not carry.
+版本 0.1.0，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传。
