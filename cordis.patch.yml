@@ -1,0 +1,7 @@
+# dsh-endpoint — profile layer.
+#
+# The `id` below is the profile entry id and the settings namespace this
+# endpoint reads and writes. Renaming it orphans saved values, so leave it alone.
+- insert:
+    - id: dsh-endpoint
+      name: 'dsh-endpoint'
