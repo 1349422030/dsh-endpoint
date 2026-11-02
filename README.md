@@ -118,7 +118,7 @@ dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 npm test
 ```
 
-测试套件会把宿主自带的 `@deepseek-ai/dsh-llm` 和 `dsh-attachment` 链接进 `node_modules`（它们由 Harness 在运行时提供，不在本仓库重复安装），然后跑 `node --test`。覆盖范围：消息转换与工具历史折叠、能力投影、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端——JSON、SSE、tools 拒绝、图像模态门、输出上限夹取、未知模型上报。
+覆盖消息转换与工具历史折叠、能力投影、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、tools 拒绝、图像模态门、输出上限夹取、未知模型上报。
 
 ## 状态
 
