@@ -112,19 +112,6 @@ profile 没有声明的字段一律是 `null`（`input_modalities` 也是 `null`
 dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 ```
 
-装好后检查一下：
-
-```sh
-curl http://127.0.0.1:8788/health
-curl http://127.0.0.1:8788/v1/models
-```
-
-> 端口默认 8788。如果你已经在用别的 profile 跑同一个插件，记得改端口，否则会遇到端口占用。
->
-> 安装时 pnpm 会报几条 peer dependency 缺失（`@deepseek-ai/cordis`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-client-*`）。这些包由 Harness 自己提供，不需要在 profile 里单独装，警告可以忽略。
->
-> 注意 `dsh plugin` 只是把参数转发给 pnpm。**私有的 GitHub 仓库装不了**：pnpm 会先把仓库地址规范化成 https 去 `git ls-remote`，私有库在无凭据时会卡在交互式认证上。本仓库是公开的，所以上面这条命令可用；本地开发时也可以直接用目录路径 `add <本地目录>`。
-
 ## 测试
 
 ```sh
