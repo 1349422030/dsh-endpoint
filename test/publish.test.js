@@ -48,6 +48,20 @@ test('an alias is routable and is echoed back as the published name', async () =
     assert.deepEqual(byRoute, { provider: 'beta', model: 'deepseek/flash', publicId: 'beta/deepseek/flash' });
 });
 
+test('an alias retires the old bare id in the model card too', async () => {
+    const ctx = registry();
+    const settings = { modelIds: { 'alpha/solo': 'solo2' } };
+    // The two names a request may use: the published alias and the real route.
+    assert.equal((await modelById(ctx, settings, 'solo2')).id, 'solo2');
+    assert.equal((await modelById(ctx, settings, 'alpha/solo')).id, 'solo2');
+    // The id an alias replaced resolves nowhere, exactly as it routes nowhere.
+    assert.equal(await modelById(ctx, settings, 'solo'), undefined);
+    await assert.rejects(
+        resolveRoute(ctx, settings, undefined, 'solo'),
+        (error) => error.status === 404 && error.code === 'model_not_found',
+    );
+});
+
 test('the exposure list decides what exists, not merely what is advertised', async () => {
     const ctx = registry();
     const settings = { expose: ['alpha/*'] };

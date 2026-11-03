@@ -83,7 +83,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 `modelIds` 的键是真实路由 `provider/model`，值是客户端看到的名字。别名一旦生效，那个模型就只以别名出现：`/v1/models` 里是 `flash`，请求 `flash` 能路由，而请求原来的 `deepseek/deepseek-v4.1-flash` 会 404——一个模型只有一个名字，否则客户端会看到两份指向同一模型的卡片。没配别名的模型保留裸 id；裸 id 撞名时升级成 `provider/id`，再撞就带序号兜底。
 
-`expose` 是白名单，接受 `provider/model`、`provider/*` 和 `*`，留空表示全部。名单之外的模型不是「列表里藏起来但还能用」——它对这个端点完全不存在：不出现在 `/v1/models`，请求它返回 `404 model_not_found`（错误消息会列出当前发布的 id）。这比「列出来却用不了」更难让客户端误会。
+`expose` 是白名单，接受 `provider/model`、`provider/*` 和 `*`，留空表示全部。名单之外的模型不是「列表里藏起来但还能用」——它对这个端点完全不存在：不出现在 `/v1/models`，模型卡也查不到，补全请求返回 `404 model_not_found`（错误消息会列出当前发布的 id）。这比「列出来却用不了」更难让客户端误会。
 
 响应里的 `model` 字段回显**客户端请求时用的那个名字**，请求和答复因此能对上；这次真实落到哪个 provider、哪个模型，看 `x-dsh-model` 和 `x-dsh-provider` 响应头。
 
