@@ -103,7 +103,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 - **图像。** 只接受 `data:` base64 部件，形式为 `image_url` 或 `input_image`。它们经由 Harness 的附件库落盘，因此 profile 自己的限额（`maxImageBytes`、`maxImagesPerMessage`、`maxMessageImageBytes`、`maxImagePixels`、`maxImageDimension`、允许的媒体类型）全部生效——这个端点不自造任何数字。元数据里没有列出 `image` 的模型会在**写入磁盘之前**被拒：`400 images_unsupported`。远程 URL 一律拒绝，返回 `400 image_url_unsupported`，因为代抓远程图会把端点变成 SSRF 通道。
 - **思考。** `reasoning_effort`、`enable_thinking`、`{"reasoning": {"enabled": ...}}` 三种写法都认。发出去的档位一定是模型真正声明过的；未知档位名会就近映射到最近的声明档位，"关闭"在没有关闭档的模型上退化为它声明的最低档，每一次替换都写进 `x-dsh-warning` 响应头。思考内容以 `reasoning_content` 返回，流式和非流式都有。
 - **长度。** `max_tokens` 只允许往下调。超过模型声明上限的值会被夹到上限并写进 `x-dsh-warning` 响应头。明显超出上下文窗口的 prompt 在发给上游之前就被拒：`400 context_length_exceeded`。估算方式是字符数/4——这个端点没有 tokenizer，所以那个数字是一道保险，不是对 prompt 的精确计费。
-- **工具。** 见下一节：声明上行、调用下行，端点自己从不执行。
+- **工具。** 见上一节：声明上行、调用下行，端点自己从不执行。
 - **用量。** 上游报了就直接透传；没报就估算并标 `"estimated": true`。流式里 usage 挂在最后一个 chunk 上、与 `choices` 平级，这是 OpenAI schema 的规定位置。
 - **流式中途出错。** 此时响应头早已发出，错误以 `data: {"error": {...}}` 送达，之后仍然有 `data: [DONE]`——流总是干净收尾。
 - **透传不了的参数。** `top_p`、`response_format`、`logprobs`、`seed`、`presence_penalty`、`frequency_penalty` 在 Harness 的请求结构里没有对应位置。它们会被接受但忽略，而不是假装生效；思考开启时 `temperature` 会被丢弃，并在 `x-dsh-warning` 里说明。
@@ -145,7 +145,6 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
     expose:
       - commandcode/*
 ```
-
 
 ## 安装
 
