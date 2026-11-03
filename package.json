@@ -1,7 +1,6 @@
 {
-  "name": "dsh-endpoint",
+  "name": "@fishhhh/dsh-endpoint",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Serves the models this DeepSeek Harness profile is configured for as an OpenAI-compatible HTTP endpoint, inheriting modalities, reasoning efforts, and context limits from the profile.",
   "main": "lib/plugin.js",
@@ -30,6 +29,18 @@
     "local-api"
   ],
   "license": "MIT",
+  "author": "fish",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1349422030/dsh-endpoint.git"
+  },
+  "homepage": "https://github.com/1349422030/dsh-endpoint#readme",
+  "bugs": {
+    "url": "https://github.com/1349422030/dsh-endpoint/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -55,6 +66,7 @@
     "react": "^18.2.0"
   },
   "scripts": {
-    "test": "node scripts/link-host.mjs && node --test test"
+    "test": "node scripts/link-host.mjs && node --test test",
+    "prepublishOnly": "npm test"
   }
 }

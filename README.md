@@ -148,11 +148,13 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 ## 安装
 
-本插件不构建、不打包，直接用源码；需要先在 DSH 里装好（`dsh` 命令可用）。
+本插件不构建、不打包，源码直接运行；需要先在 DSH 里装好（`dsh` 命令可用）。
 
 ```sh
-dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
+dsh plugin --profile <profile 名> add @fishhhh/dsh-endpoint
 ```
+
+想跟源码而不是发布版，把包名换成仓库地址即可（`github:1349422030/dsh-endpoint`）。
 
 ## 测试
 
