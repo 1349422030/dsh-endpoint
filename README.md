@@ -11,7 +11,7 @@
 | 路由 | 作用 |
 | --- | --- |
 | `POST /v1/chat/completions` | 单轮补全，可流式 |
-| `GET /v1/models` | profile 能路由的全部模型 |
+| `GET /v1/models` | 发布出去的模型（默认是 profile 能路由的全部） |
 | `GET /v1/models/{id}` | 单个模型，含能力明细 |
 | `GET /health` | 监听是否在跑，以及谁能连上 |
 
@@ -65,6 +65,28 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 忽略响应头的客户端拿到的就是一个普通的 OpenAI 响应；需要真相的客户端读头即可。流式请求同理，头在第一个字节之前就已经发出。
 
+## 发布哪些模型：别名与暴露名单
+
+默认把 profile 里能路由到的每个模型都发布出去，id 就是模型自己的 id。两件事会让这里出问题：同一个模型名可能出现在两个中转站下（`deepseek/deepseek-v4.1-flash` 是两条不同的路由，同名不同源），以及有些模型你并不想让外部客户端看见。两个配置键分别解决：
+
+```yaml
+- id: dsh-endpoint
+  config:
+    modelIds:
+      commandcode/deepseek/deepseek-v4.1-flash: flash
+      commandcode/google/gemini-3.8-flash: gemini
+    expose:
+      - commandcode/deepseek/deepseek-v4.1-flash
+      - commandcode/google/gemini-3.8-flash
+      - deepseek-account/deepseek-flash
+```
+
+`modelIds` 的键是真实路由 `provider/model`，值是客户端看到的名字。别名一旦生效，那个模型就只以别名出现：`/v1/models` 里是 `flash`，请求 `flash` 能路由，而请求原来的 `deepseek/deepseek-v4.1-flash` 会 404——一个模型只有一个名字，否则客户端会看到两份指向同一模型的卡片。没配别名的模型保留裸 id；裸 id 撞名时升级成 `provider/id`，再撞就带序号兜底。
+
+`expose` 是白名单，接受 `provider/model`、`provider/*` 和 `*`，留空表示全部。名单之外的模型不是「列表里藏起来但还能用」——它对这个端点完全不存在：不出现在 `/v1/models`，请求它返回 `404 model_not_found`（错误消息会列出当前发布的 id）。这比「列出来却用不了」更难让客户端误会。
+
+响应里的 `model` 字段回显**客户端请求时用的那个名字**，请求和答复因此能对上；这次真实落到哪个 provider、哪个模型，看 `x-dsh-model` 和 `x-dsh-provider` 响应头。
+
 ## 工具调用：声明上行，调用下行
 
 工具属于调用方。一个 agent 客户端每轮都会带上它自己的工具集，这个端点只做两件事：把声明转成 Harness 的 `ToolSchema` 交给模型，把模型发起的 `tool_calls` 原样交回调用方。**它不执行任何工具**，也不会把本 profile 里 agent 自己的工具借出去——那些工具、它们的审批策略和执行权始终留在这个 DSH 进程里。
@@ -108,7 +130,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 ## 设置页
 
-设置页只放调试时值得改的四个字段——启用、绑定地址、端口、API key——并且即时生效：监听会重新绑定，不需要重启。其余配置（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`）写在 profile 的 `cordis.patch.yml` 里：
+设置页只放调试时值得改的四个字段——启用、绑定地址、端口、API key——并且即时生效：监听会重新绑定，不需要重启。其余配置（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`、发布名单 `modelIds`/`expose`）写在 profile 的 `cordis.patch.yml` 里：
 
 ```yaml
 - id: dsh-endpoint
@@ -118,7 +140,12 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
     host: 127.0.0.1
     port: 8788
     apiKey: ''
+    modelIds:
+      commandcode/deepseek/deepseek-v4.1-flash: flash
+    expose:
+      - commandcode/*
 ```
+
 
 ## 安装
 
@@ -134,7 +161,7 @@ dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 npm test
 ```
 
-覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
+覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、别名与暴露名单（含裸 id 撞名升级、别名不可绕过）、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
 
 ## 状态
 

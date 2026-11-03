@@ -32,16 +32,20 @@ export function fakeInfo(overrides = {}) {
  * A plugin context exposing only the `llm` surface `handleChat` uses.
  * @param {object} info - what `resolveModelInfo` returns.
  * @param {function(object): object[]} chunks - produces the chunk stream for one call.
+ * @param {{provider: string, id: string, name?: string}[]} [rows] - the registry to expose.
  * @returns {object} the fake context, with a `calls` array of stream options.
  */
-export function fakeCtx(info, chunks) {
+export function fakeCtx(info, chunks, rows = [{ provider: 'p', id: 'm', name: 'Model M' }]) {
     const calls = [];
+    const providers = [...new Set(rows.map((row) => row.provider))];
     return {
         calls,
         get: () => undefined,
         llm: {
-            listProviders: () => [{ id: 'p' }],
-            listModels: async () => [{ id: 'm', name: 'Model M' }],
+            listProviders: () => providers.map((id) => ({ id })),
+            listModels: async (provider) => rows
+                .filter((row) => row.provider === provider)
+                .map((row) => ({ id: row.id, name: row.name ?? row.id })),
             resolveModelInfo: async () => info,
             stream: (options) => {
                 calls.push(options);
@@ -69,6 +73,8 @@ export async function startServer(ctx, settings = {}) {
         provider: '',
         model: '',
         corsOrigin: '*',
+        modelIds: {},
+        expose: [],
         ...settings,
     };
     const server = createServer((request, response) => {

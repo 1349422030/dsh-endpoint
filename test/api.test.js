@@ -564,8 +564,38 @@ test('an unknown model names the ones that exist', async () => {
         const answer = await post(server.url, { model: 'nope', messages: [{ role: 'user', content: 'hi' }] });
         assert.equal(answer.status, 404);
         assert.equal(answer.json.error.code, 'model_not_found');
-        assert.match(answer.json.error.message, /p\/m/);
+        assert.match(answer.json.error.message, /published model\(s\): m/);
     } finally {
         await server.close();
     }
 });
+test('an alias is what the answer calls the model, and the route stays visible in the headers', async () => {
+    const ctx = fakeCtx(fakeInfo(), () => textChunks());
+    const server = await startServer(ctx, { modelIds: { 'p/m': 'mind' } });
+    try {
+        const answer = await post(server.url, { model: 'mind', messages: [{ role: 'user', content: 'hi' }] });
+        assert.equal(answer.status, 200);
+        // The id the caller used comes back unchanged, so request and answer match.
+        assert.equal(answer.json.model, 'mind');
+        // The truth about which provider/model served it is out of band.
+        assert.equal(answer.headers.get('x-dsh-provider'), 'p');
+        assert.equal(answer.headers.get('x-dsh-model'), 'm');
+        const { frames } = await stream(server.url, { model: 'mind', messages: [{ role: 'user', content: 'hi' }] });
+        assert.equal(frames[0].model, 'mind');
+    } finally {
+        await server.close();
+    }
+});
+
+test('a model left out of the exposure list cannot be used', async () => {
+    const rows = [{ provider: 'p', id: 'm', name: 'M' }, { provider: 'p', id: 'other', name: 'Other' }];
+    const server = await startServer(fakeCtx(fakeInfo(), () => textChunks(), rows), { expose: ['p/other'] });
+    try {
+        const answer = await post(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+        assert.equal(answer.status, 404);
+        assert.equal(answer.json.error.code, 'model_not_found');
+    } finally {
+        await server.close();
+    }
+});
+

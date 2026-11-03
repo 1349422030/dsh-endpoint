@@ -41,7 +41,7 @@ test('supported_parameters advertises tools, which the endpoint passes through',
 
 test('a model is addressable by bare id and by provider-qualified id', async () => {
     const ctx = fakeCtx(fakeInfo());
-    assert.equal((await modelById(ctx, 'm')).id, 'm');
-    assert.equal((await modelById(ctx, 'p/m')).id, 'm');
-    assert.equal(await modelById(ctx, 'nope'), undefined);
+    assert.equal((await modelById(ctx, {}, 'm')).id, 'm');
+    assert.equal((await modelById(ctx, {}, 'p/m')).id, 'm');
+    assert.equal(await modelById(ctx, {}, 'nope'), undefined);
 });
