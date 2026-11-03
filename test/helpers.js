@@ -5,7 +5,7 @@
  */
 import { createServer } from 'node:http';
 import { handleChat } from '../lib/chat.js';
-import { failRequest } from '../lib/http.js';
+import { corsHeaders, failRequest } from '../lib/http.js';
 
 /**
  * A resolved model description with the fields this endpoint reads.
@@ -72,6 +72,11 @@ export async function startServer(ctx, settings = {}) {
         ...settings,
     };
     const server = createServer((request, response) => {
+        // Same header set the real listener applies, so a test can see what a
+        // browser client would.
+        for (const [name, value] of Object.entries(corsHeaders(merged))) {
+            response.setHeader(name, value);
+        }
         handleChat({ ctx, settings: merged, bound: { port: 0 }, request, response })
             .catch((error) => failRequest(response, error));
     });

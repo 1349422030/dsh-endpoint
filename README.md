@@ -104,7 +104,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 }
 ```
 
-绑非回环地址却不设 API key，会在 `/health` 和插件日志里各留一条警告。浏览器客户端的 CORS 也照顾了：`OPTIONS` 在鉴权之前处理，`access-control-allow-origin` 跟随 `corsOrigin` 设置（默认 `*`）。
+绑非回环地址却不设 API key，会在 `/health` 和插件日志里各留一条警告。浏览器客户端的 CORS 也照顾了：`OPTIONS` 在鉴权之前处理，`access-control-allow-origin` 跟随 `corsOrigin` 设置（默认 `*`），`access-control-expose-headers` 显式列出所有 `x-dsh-*` 事实头——否则浏览器里的客户端读得到正文、读不到「实际是哪个模型答的、有没有警告」。
 
 ## 设置页
 

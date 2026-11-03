@@ -540,6 +540,24 @@ test('an output limit above the model ceiling is clamped and reported', async ()
     }
 });
 
+test('a browser client is allowed to read the outcome headers', async () => {
+    // CORS hides every response header from a browser unless it is exposed, so
+    // the facts this endpoint reports out of band would be invisible without
+    // an explicit list.
+    const server = await startServer(fakeCtx(fakeInfo(), () => textChunks()));
+    try {
+        const answer = await post(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+        const exposed = (answer.headers.get('access-control-expose-headers') ?? '')
+            .split(',')
+            .map((name) => name.trim());
+        for (const name of ['x-dsh-provider', 'x-dsh-model', 'x-dsh-thinking', 'x-dsh-reasoning-effort', 'x-dsh-warning']) {
+            assert.ok(exposed.includes(name), `${name} is not exposed`);
+        }
+    } finally {
+        await server.close();
+    }
+});
+
 test('an unknown model names the ones that exist', async () => {
     const server = await startServer(fakeCtx(fakeInfo(), () => textChunks()));
     try {
