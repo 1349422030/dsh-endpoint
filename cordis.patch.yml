@@ -2,6 +2,12 @@
 #
 # The `id` below is the profile entry id and the settings namespace this
 # endpoint reads and writes. Renaming it orphans saved values, so leave it alone.
+#
+# The `name` must be this package's npm name exactly: the loader resolves an
+# inserted entry from the profile's own node_modules, so a name that does not
+# match the installed package fails with ERR_MODULE_NOT_FOUND at boot. Renaming
+# the package therefore also means editing this line — test/packaging.test.js
+# keeps the two in step.
 - insert:
     - id: dsh-endpoint
-      name: 'dsh-endpoint'
+      name: '@fishhhh/dsh-endpoint'
