@@ -151,10 +151,10 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 本插件不构建、不打包，源码直接运行；需要先在 DSH 里装好（`dsh` 命令可用）。
 
 ```sh
-dsh plugin --profile <profile 名> add @fishhhh/dsh-endpoint
+dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint#v0.1.1
 ```
 
-想跟源码而不是发布版，把包名换成仓库地址即可（`github:1349422030/dsh-endpoint`）。
+想跟源码走，去掉 `#v0.1.1`；本地开发则直接给路径（`add /path/to/dsh-endpoint`）。
 
 ## 测试
 
@@ -166,7 +166,7 @@ npm test
 
 ## 状态
 
-版本 0.1.0，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
+版本 0.1.2，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
 
 ## 致谢
 
