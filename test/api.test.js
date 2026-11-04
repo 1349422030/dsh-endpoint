@@ -131,7 +131,7 @@ test('a plain completion answers in the OpenAI shape', async () => {
     const server = await startServer(ctx);
     try {
         const answer = await post(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: [{ role: 'user', content: 'hi' }],
             reasoning_effort: 'low',
         });
@@ -158,7 +158,7 @@ test('a streamed completion emits role, deltas, usage and [DONE]', async () => {
     const ctx = fakeCtx(fakeInfo(), () => textChunks());
     const server = await startServer(ctx);
     try {
-        const { status, frames, text } = await stream(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+        const { status, frames, text } = await stream(server.url, { model: 'p/m', messages: [{ role: 'user', content: 'hi' }] });
         assert.equal(status, 200);
         assert.equal(frames[0].choices[0].delta.role, 'assistant');
         assert.equal(frames.filter((frame) => frame.choices?.[0]?.delta?.content).length, 2);
@@ -176,7 +176,7 @@ test('a completion returns tool calls in the OpenAI shape', async () => {
     const ctx = fakeCtx(fakeInfo(), () => callChunks({ id: 'call_a', name: 'read_file', arguments: '{"path":"a.txt"}' }));
     const server = await startServer(ctx);
     try {
-        const answer = await post(server.url, { model: 'm', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
+        const answer = await post(server.url, { model: 'p/m', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
         assert.equal(answer.status, 200);
         const message = answer.json.choices[0].message;
         assert.equal(message.role, 'assistant');
@@ -207,7 +207,7 @@ test('prose alongside a tool call keeps its content', async () => {
     ]);
     const server = await startServer(ctx);
     try {
-        const answer = await post(server.url, { model: 'm', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
+        const answer = await post(server.url, { model: 'p/m', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
         assert.equal(answer.status, 200);
         assert.equal(answer.json.choices[0].message.content, 'Reading it.');
         assert.equal(answer.json.choices[0].message.tool_calls[0].id, 'call_a');
@@ -222,7 +222,7 @@ test('tool declarations reach the provider as harness schemas', async () => {
     const server = await startServer(ctx);
     try {
         const answer = await post(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: [{ role: 'user', content: 'hi' }],
             tools: [
                 READ_FILE_TOOL,
@@ -240,10 +240,10 @@ test('tool declarations reach the provider as harness schemas', async () => {
             { name: 'ping', description: '', parameters: {} },
         ]);
         // A tool-free request stays exactly the request it was.
-        await post(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+        await post(server.url, { model: 'p/m', messages: [{ role: 'user', content: 'hi' }] });
         assert.equal(Object.hasOwn(ctx.calls[1], 'tools'), false);
         // An empty declaration list is omitted too, not sent as [].
-        await post(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }], tools: [] });
+        await post(server.url, { model: 'p/m', messages: [{ role: 'user', content: 'hi' }], tools: [] });
         assert.equal(Object.hasOwn(ctx.calls[2], 'tools'), false);
     } finally {
         await server.close();
@@ -260,7 +260,7 @@ test('a streamed tool call arrives as OpenAI deltas', async () => {
     const server = await startServer(ctx);
     try {
         const { status, frames, text } = await stream(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: TOOL_HISTORY,
             tools: [READ_FILE_TOOL],
         });
@@ -291,7 +291,7 @@ test('parallel tool calls accumulate per index', async () => {
     const server = await startServer(ctx);
     try {
         const { frames } = await stream(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: [{ role: 'user', content: 'read a.txt and list .' }],
             tools: [READ_FILE_TOOL],
         });
@@ -316,7 +316,7 @@ test('parallel tool calls accumulate per index', async () => {
     const plainServer = await startServer(fakeCtx(fakeInfo(), () => parallelCallChunks()));
     try {
         const answer = await post(plainServer.url, {
-            model: 'm',
+            model: 'p/m',
             messages: [{ role: 'user', content: 'read a.txt and list .' }],
             tools: [READ_FILE_TOOL],
         });
@@ -339,7 +339,7 @@ test('a stream that ends without a finish still reports tool_calls', async () =>
     ));
     const server = await startServer(ctx);
     try {
-        const answer = await post(server.url, { model: 'm', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
+        const answer = await post(server.url, { model: 'p/m', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
         assert.equal(answer.status, 200);
         assert.equal(answer.json.choices[0].finish_reason, 'tool_calls');
         assert.equal(answer.json.choices[0].message.tool_calls.length, 1);
@@ -358,7 +358,7 @@ test('a stop finish alongside tool calls is reported as tool_calls', async () =>
     ));
     const server = await startServer(ctx);
     try {
-        const answer = await post(server.url, { model: 'm', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
+        const answer = await post(server.url, { model: 'p/m', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
         assert.equal(answer.status, 200);
         assert.equal(answer.json.choices[0].message.tool_calls.length, 1);
         assert.equal(answer.json.choices[0].finish_reason, 'tool_calls');
@@ -377,7 +377,7 @@ test('a truncated turn with tool calls still reports length', async () => {
     ));
     const server = await startServer(ctx);
     try {
-        const answer = await post(server.url, { model: 'm', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
+        const answer = await post(server.url, { model: 'p/m', messages: TOOL_HISTORY, tools: [READ_FILE_TOOL] });
         assert.equal(answer.status, 200);
         assert.equal(answer.json.choices[0].message.tool_calls.length, 1);
         assert.equal(answer.json.choices[0].finish_reason, 'length');
@@ -399,7 +399,7 @@ test('a block-end-only adapter still streams its tool calls', async () => {
     const server = await startServer(ctx);
     try {
         const { status, frames } = await stream(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: TOOL_HISTORY,
             tools: [READ_FILE_TOOL],
         });
@@ -435,7 +435,7 @@ test('a tool call later than block zero still streams as tool call zero', async 
     const server = await startServer(ctx);
     try {
         const { frames } = await stream(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: TOOL_HISTORY,
             tools: [READ_FILE_TOOL],
         });
@@ -459,7 +459,7 @@ test('a call already streamed as deltas is not sent again at the end', async () 
     const server = await startServer(ctx);
     try {
         const { frames } = await stream(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: TOOL_HISTORY,
             tools: [READ_FILE_TOOL],
         });
@@ -487,7 +487,7 @@ test('a malformed tool declaration is refused', async () => {
         ];
         for (const tools of declarations) {
             const answer = await post(server.url, {
-                model: 'm',
+                model: 'p/m',
                 messages: [{ role: 'user', content: 'hi' }],
                 tools,
             });
@@ -506,7 +506,7 @@ test('an image is refused before upload when the model takes text only', async (
     const server = await startServer(fakeCtx(info, () => textChunks()));
     try {
         const answer = await post(server.url, {
-            model: 'm',
+            model: 'p/m',
             messages: [{
                 role: 'user',
                 content: [
@@ -528,7 +528,7 @@ test('an output limit above the model ceiling is clamped and reported', async ()
     const server = await startServer(ctx);
     try {
         const answer = await post(server.url, {
-            model: 'm',
+            model: 'p/m',
             max_tokens: 999_999,
             messages: [{ role: 'user', content: 'hi' }],
         });
@@ -546,7 +546,7 @@ test('a browser client is allowed to read the outcome headers', async () => {
     // an explicit list.
     const server = await startServer(fakeCtx(fakeInfo(), () => textChunks()));
     try {
-        const answer = await post(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+        const answer = await post(server.url, { model: 'p/m', messages: [{ role: 'user', content: 'hi' }] });
         const exposed = (answer.headers.get('access-control-expose-headers') ?? '')
             .split(',')
             .map((name) => name.trim());
@@ -564,7 +564,7 @@ test('an unknown model names the ones that exist', async () => {
         const answer = await post(server.url, { model: 'nope', messages: [{ role: 'user', content: 'hi' }] });
         assert.equal(answer.status, 404);
         assert.equal(answer.json.error.code, 'model_not_found');
-        assert.match(answer.json.error.message, /published model\(s\): m/);
+        assert.match(answer.json.error.message, /published model\(s\): p\/m/);
     } finally {
         await server.close();
     }
@@ -591,7 +591,8 @@ test('a model left out of the exposure list cannot be used', async () => {
     const rows = [{ provider: 'p', id: 'm', name: 'M' }, { provider: 'p', id: 'other', name: 'Other' }];
     const server = await startServer(fakeCtx(fakeInfo(), () => textChunks(), rows), { expose: ['p/other'] });
     try {
-        const answer = await post(server.url, { model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+        // By its published (provider-qualified) name, the unexposed model still routes nowhere.
+        const answer = await post(server.url, { model: 'p/m', messages: [{ role: 'user', content: 'hi' }] });
         assert.equal(answer.status, 404);
         assert.equal(answer.json.error.code, 'model_not_found');
     } finally {

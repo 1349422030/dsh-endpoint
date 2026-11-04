@@ -9,7 +9,7 @@ test('a model card carries the OpenRouter fields and no private ones', async () 
     const card = list.data[0];
     assert.equal(list.object, 'list');
     assert.equal(card.object, 'model');
-    assert.equal(card.id, 'm');
+    assert.equal(card.id, 'p/m');
     assert.equal(card.context_length, 100_000);
     assert.deepEqual(card.architecture.input_modalities, ['text', 'image']);
     assert.equal(card.architecture.modality, 'text+image->text');
@@ -39,9 +39,11 @@ test('supported_parameters advertises tools, which the endpoint passes through',
     );
 });
 
-test('a model is addressable by bare id and by provider-qualified id', async () => {
+test('a model is addressable by its provider-qualified id alone', async () => {
     const ctx = fakeCtx(fakeInfo());
-    assert.equal((await modelById(ctx, {}, 'm')).id, 'm');
-    assert.equal((await modelById(ctx, {}, 'p/m')).id, 'm');
+    assert.equal((await modelById(ctx, {}, 'p/m')).id, 'p/m');
+    // Without an alias the bare id is not a published name, so it resolves
+    // nowhere — a client must use the qualified id (or configure an alias).
+    assert.equal(await modelById(ctx, {}, 'm'), undefined);
     assert.equal(await modelById(ctx, {}, 'nope'), undefined);
 });

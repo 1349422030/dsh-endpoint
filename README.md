@@ -25,7 +25,7 @@ OpenAI 的 `model` 对象只有 `id`、`object`、`created`、`owned_by`。它�
 
 ```json
 {
-  "id": "deepseek/deepseek-v4.1-flash",
+  "id": "commandcode/deepseek/deepseek-v4.1-flash",
   "object": "model",
   "created": 1704067200,
   "owned_by": "commandcode",
@@ -67,7 +67,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 ## 发布哪些模型：别名与暴露名单
 
-默认把 profile 里能路由到的每个模型都发布出去，id 就是模型自己的 id。两件事会让这里出问题：同一个模型名可能出现在两个中转站下（`deepseek/deepseek-v4.1-flash` 是两条不同的路由，同名不同源），以及有些模型你并不想让外部客户端看见。两个配置键分别解决：
+默认把 profile 里能路由到的每个模型都发布出去，公开 id 就是它的真实路由 `provider/model`。这个默认不要求你记住任何映射，也天然解决同名问题：`commandcode/deepseek/deepseek-v4.1-flash` 和 `deepseek-account/deepseek-flash` 是两个中转站下的两条路由，名字不会打架。真正需要你介入的只有两件事——你想要个短名字，以及有些模型你不想让外部客户端看见：
 
 ```yaml
 - id: dsh-endpoint
@@ -81,7 +81,9 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
       - deepseek-account/deepseek-flash
 ```
 
-`modelIds` 的键是真实路由 `provider/model`，值是客户端看到的名字。别名一旦生效，那个模型就只以别名出现：`/v1/models` 里是 `flash`，请求 `flash` 能路由，而请求原来的 `deepseek/deepseek-v4.1-flash` 会 404——一个模型只有一个名字，否则客户端会看到两份指向同一模型的卡片。没配别名的模型保留裸 id；裸 id 撞名时升级成 `provider/id`，再撞就带序号兜底。
+`modelIds` 的键是真实路由 `provider/model`，值是客户端看到的名字。别名替换的是默认公开名：`/v1/models` 里那个模型显示为 `flash`，请求 `flash` 能路由，请求真实路由 `commandcode/deepseek/deepseek-v4.1-flash` 同样能路由（别名不会遮住它赖以路由的地址），响应回显你请求时用的那个名字。裸模型 id（`deepseek/deepseek-v4.1-flash`，不带 provider）从不发布，任何配置下都不是可用的名字。
+
+列表之外的兜底只在手写 yml 时才会碰到：两个模型争同一个名字时，先出现的那个保住名字，后来者退回自己的路由，若连路由都被占则加 `.2` 这样的后缀。设置页不允许存出这种状态——自定义 id 撞上别的模型的路由、撞上另一个自定义 id、或撞上 `auto`/`default`/`on`/`true`/`1` 这类保留字时，该行标红、保存按钮禁用。
 
 `expose` 是白名单，接受 `provider/model`、`provider/*` 和 `*`，留空表示全部。名单之外的模型不是「列表里藏起来但还能用」——它对这个端点完全不存在：不出现在 `/v1/models`，模型卡也查不到，补全请求返回 `404 model_not_found`（错误消息会列出当前发布的 id）。这比「列出来却用不了」更难让客户端误会。
 
@@ -130,21 +132,24 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 ## 设置页
 
-设置页只放调试时值得改的四个字段——启用、绑定地址、端口、API key——并且即时生效：监听会重新绑定，不需要重启。其余配置（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`、发布名单 `modelIds`/`expose`）写在 profile 的 `cordis.patch.yml` 里：
+设置页放调试与日常运维时值得改的东西：启用、绑定地址、端口、API key，以及**发布哪些模型**。全部即时生效，不用重启——改绑定地址/端口会让监听重建，改发布名单只是让下一次请求读到新名单，已经在流的请求不会被打断。
+
+「模型」那张卡列出本 profile 当前能路由的每个模型，一行一个：勾选决定它是否对外暴露，右边的输入框填自定义 id（留空即用默认的 `provider/model`）。保存时如果全部勾选，写回的暴露名单是空数组——语义是"全部发布"，以后 profile 里新增的模型会自动出现，不必再回来勾一次；只要有一个没勾，写回的就是已勾选那些模型的具体路由。一个都不勾是无法表达的状态（空名单=全部），所以保存会被挡住并给出提示。
+
+发布名单与别名只在设置页改，不必手写 yml；剩下的配置写在 profile 的 `cordis.patch.yml` 里（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`）：
 
 ```yaml
 - id: dsh-endpoint
-  name: dsh-endpoint
+  name: '@fishhhh/dsh-endpoint'
   config:
-    enabled: true
-    host: 127.0.0.1
-    port: 8788
-    apiKey: ''
-    modelIds:
-      commandcode/deepseek/deepseek-v4.1-flash: flash
-    expose:
-      - commandcode/*
+    requestTimeoutMs: 600000
+    corsOrigin: '*'
+    # 兜底：请求的 model 为空、auto 或 default 时用它
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
 ```
+
+设置页读的实时状态来自 GUI 同源路由 `/plugins/dsh-endpoint`，它的文档里带一份模型清单（`models: [{ route, name, publicId, exposed }]`）。这份目录只走这条同源路由：对外监听的 `/health` 不含任何模型信息，因为那个端口可能绑在局域网上。反过来说，**GUI 端口本身必须继续受保护**——它已经由 DSH 的登录态或你前面的反向代理挡着，但别把它裸露出去。
 
 ## 安装
 
@@ -154,7 +159,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 ```
 
-想钉住某个发布，在仓库地址后加 tag（例如 `#v0.1.2`）；本地开发则直接给路径（`add /path/to/dsh-endpoint`）。
+想钉住某个发布，在仓库地址后加 tag（例如 `#v0.1.4`）；本地开发则直接给路径（`add /path/to/dsh-endpoint`）。
 
 ## 测试
 
@@ -162,11 +167,11 @@ dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 npm test
 ```
 
-覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、别名与暴露名单（含裸 id 撞名升级、别名不可绕过）、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
+覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、别名与暴露名单（默认 id 就是路由、别名替换默认名、撞名在设置页被挡住）、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
 
 ## 状态
 
-版本 0.1.2，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
+版本 0.1.4，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
 
 ## 致谢
 

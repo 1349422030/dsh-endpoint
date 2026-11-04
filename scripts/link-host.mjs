@@ -16,7 +16,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
 
 /** Packages this plugin imports at runtime, provided by the host. */
-const PACKAGES = ['dsh-llm', 'dsh-attachment'];
+// schemastery backs the Config schema in lib/plugin.js; it only has to be
+// resolvable for `node --test` (the host passes it through at runtime).
+const PACKAGES = ['dsh-llm', 'dsh-attachment', 'schemastery'];
 
 /**
  * Locate the installed `@deepseek-ai/dsh` package.
