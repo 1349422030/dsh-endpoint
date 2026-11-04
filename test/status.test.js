@@ -103,7 +103,8 @@ async function mounted(overrides = {}) {
 }
 
 test('the same-origin status route lists the models; the listener health does not', async () => {
-    // An alias names one model, and the empty exposure list publishes both.
+    // An alias names one model; with the publish-everything default (no
+    // exposeAll key at all) both models are listed as exposed.
     const mounted_ = await mounted({ modelIds: { 'p/m': 'mind' } });
     try {
         const { healthDocument, statusDocument } = mounted_;
@@ -122,7 +123,7 @@ test('the same-origin status route lists the models; the listener health does no
 });
 
 test('the models list marks precisely the models the exposure list publishes', async () => {
-    const mounted_ = await mounted({ expose: ['p/other'] });
+    const mounted_ = await mounted({ exposeAll: false, expose: ['p/other'] });
     try {
         const { statusDocument } = mounted_;
         const byRoute = new Map(statusDocument.models.map((model) => [model.route, model]));

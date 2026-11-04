@@ -1,6 +1,6 @@
 {
   "name": "@fishhhh/dsh-endpoint",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Serves the models this DeepSeek Harness profile is configured for as an OpenAI-compatible HTTP endpoint, inheriting modalities, reasoning efforts, and context limits from the profile.",
   "main": "lib/plugin.js",

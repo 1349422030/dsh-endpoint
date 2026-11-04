@@ -65,13 +65,19 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 忽略响应头的客户端拿到的就是一个普通的 OpenAI 响应；需要真相的客户端读头即可。流式请求同理，头在第一个字节之前就已经发出。
 
-## 发布哪些模型：别名与暴露名单
+## 发布哪些模型：开关、别名与暴露名单
 
-默认把 profile 里能路由到的每个模型都发布出去，公开 id 就是它的真实路由 `provider/model`。这个默认不要求你记住任何映射，也天然解决同名问题：`commandcode/deepseek/deepseek-v4.1-flash` 和 `deepseek-account/deepseek-flash` 是两个中转站下的两条路由，名字不会打架。真正需要你介入的只有两件事——你想要个短名字，以及有些模型你不想让外部客户端看见：
+默认把 profile 里能路由到的每个模型都发布出去，公开 id 就是它的真实路由 `provider/model`。这个默认不要求你记住任何映射，也天然解决同名问题：`commandcode/deepseek/deepseek-v4.1-flash` 和 `deepseek-account/deepseek-flash` 是两个中转站下的两条路由，名字不会打架。真正需要你介入的只有两件事——你想要个短名字，以及有些模型你不想让外部客户端看见。
+
+「模型」卡顶部的开关决定发布哪一批模型：
+
+- **发布全部模型（默认开）**：profile 里能路由的每个模型都发布，`expose` 名单被完全忽略；以后新增的模型自动出现，不必回来改设置。
+- **只发布勾选的模型（关掉开关后）**：`expose` 就是白名单，只有命中的模型存在；一个都不勾就一个都不发布。
 
 ```yaml
 - id: dsh-endpoint
   config:
+    exposeAll: false
     modelIds:
       commandcode/deepseek/deepseek-v4.1-flash: flash
       commandcode/google/gemini-3.8-flash: gemini
@@ -81,11 +87,15 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
       - deepseek-account/deepseek-flash
 ```
 
+`exposeAll` 缺省为 `true`，所以想按名单发布就必须显式写 `false`；只写非空 `expose` 而漏掉它不会生效。`expose` 接受 `provider/model`、`provider/*` 和 `*`，按字符串严格比较：大小写不同、末尾多一个 `/` 都不算命中。
+
+0.1.4 的档案没有 `exposeAll` 这个键，升级后一律按「开」处理，也就是回到全部发布。如果你之前靠非空 `expose` 限制过发布面，升级后到设置页把开关关一次即可——页面会预填当前模型并写出 `exposeAll: false`。
+
 `modelIds` 的键是真实路由 `provider/model`，值是客户端看到的名字。别名替换的是默认公开名：`/v1/models` 里那个模型显示为 `flash`，请求 `flash` 能路由，请求真实路由 `commandcode/deepseek/deepseek-v4.1-flash` 同样能路由（别名不会遮住它赖以路由的地址），响应回显你请求时用的那个名字。裸模型 id（`deepseek/deepseek-v4.1-flash`，不带 provider）从不发布，任何配置下都不是可用的名字。
 
 列表之外的兜底只在手写 yml 时才会碰到：两个模型争同一个名字时，先出现的那个保住名字，后来者退回自己的路由，若连路由都被占则加 `.2` 这样的后缀。设置页不允许存出这种状态——自定义 id 撞上别的模型的路由、撞上另一个自定义 id、或撞上 `auto`/`default`/`on`/`true`/`1` 这类保留字时，该行标红、保存按钮禁用。
 
-`expose` 是白名单，接受 `provider/model`、`provider/*` 和 `*`，留空表示全部。名单之外的模型不是「列表里藏起来但还能用」——它对这个端点完全不存在：不出现在 `/v1/models`，模型卡也查不到，补全请求返回 `404 model_not_found`（错误消息会列出当前发布的 id）。这比「列出来却用不了」更难让客户端误会。
+名单之外的模型不是「列表里藏起来但还能用」——它对这个端点完全不存在：不出现在 `/v1/models`，模型卡也查不到，补全请求返回 `404 model_not_found`（错误消息会列出当前发布的 id）。这比「列出来却用不了」更难让客户端误会。反过来，「一个都不发布」现在也是可表达的状态：显式请求任何名字都回 404；不写 `model` 或写 `auto`/`default` 时因为没有兜底可选，回 `503 no_models`。
 
 响应里的 `model` 字段回显**客户端请求时用的那个名字**，请求和答复因此能对上；这次真实落到哪个 provider、哪个模型，看 `x-dsh-model` 和 `x-dsh-provider` 响应头。
 
@@ -134,9 +144,14 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 
 设置页放调试与日常运维时值得改的东西：启用、绑定地址、端口、API key，以及**发布哪些模型**。全部即时生效，不用重启——改绑定地址/端口会让监听重建，改发布名单只是让下一次请求读到新名单，已经在流的请求不会被打断。
 
-「模型」那张卡列出本 profile 当前能路由的每个模型，一行一个：勾选决定它是否对外暴露，右边的输入框填自定义 id（留空即用默认的 `provider/model`）。保存时如果全部勾选，写回的暴露名单是空数组——语义是"全部发布"，以后 profile 里新增的模型会自动出现，不必再回来勾一次；只要有一个没勾，写回的就是已勾选那些模型的具体路由。一个都不勾是无法表达的状态（空名单=全部），所以保存会被挡住并给出提示。
+「模型」那张卡列出本 profile 当前能路由的每个模型，一行一个，顶部一个开关：
 
-发布名单与别名只在设置页改，不必手写 yml；剩下的配置写在 profile 的 `cordis.patch.yml` 里（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`）：
+- **发布全部模型**（默认）：所有勾选框显示为已选中且不可点，保存不改名单，以后新增的模型自动发布。此时配置里的 `expose` 原值会保留不动，关掉开关后还能接着用。
+- **只发布勾选的模型**：勾选决定谁对外暴露，右边输入框填自定义 id（留空即用默认的 `provider/model`，两种模式下都可编辑）。一个都不勾也能保存，卡片会红字提示「端点将不发布任何模型」——这是明确的意图，不再被拦住。
+
+把开关从「全部」切到「只发布勾选」时，页面先把当前列出的模型全部勾上，并把 `exposeAll: false` 与这份名单一起写进配置——否则一次误切就会静默下架所有模型。切完之后再取消勾选不想发布的那几个。实时状态还没读到、或目录暂时枚举不到模型时，开关不可点，免得拿一份空名单覆盖原有配置。
+
+发布名单与别名推荐在设置页改；手写 yml 也可以（就是上一节的 `exposeAll`/`expose`/`modelIds`），只是少了设置页的撞名校验。剩下的配置写在 profile 的 `cordis.patch.yml` 里（`requestTimeoutMs`、兜底的 `provider`/`model`、`corsOrigin`）：
 
 ```yaml
 - id: dsh-endpoint
@@ -159,7 +174,7 @@ x-dsh-warning: max_tokens 999999 exceeds this model's declared output limit of 3
 dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 ```
 
-想钉住某个发布，在仓库地址后加 tag（例如 `#v0.1.4`）；本地开发则直接给路径（`add /path/to/dsh-endpoint`）。
+想钉住某个发布，在仓库地址后加 tag（例如 `#v0.1.5`）；本地开发则直接给路径（`add /path/to/dsh-endpoint`）。
 
 ## 测试
 
@@ -167,11 +182,11 @@ dsh plugin --profile <profile 名> add github:1349422030/dsh-endpoint
 npm test
 ```
 
-覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、别名与暴露名单（默认 id 就是路由、别名替换默认名、撞名在设置页被挡住）、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
+覆盖消息转换与工具映射（声明转 schema、`tool_calls` 与 `role: "tool"` 的历史映射）、模型卡投影、别名与暴露名单（默认 id 就是路由、别名替换默认名、撞名在设置页被挡住、「全部发布」开关与空名单零发布）、思考档位翻译，以及跑在真实 socket 上的 HTTP 端到端：JSON、SSE、工具的流式增量与并行调用、图像模态门、输出上限夹取、未知模型上报。
 
 ## 状态
 
-版本 0.1.4，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
+版本 0.1.5，上述范围内的功能已完成。已知限制全部如实写出，不做隐藏：没有 tokenizer 来精确计算 prompt（上下文守卫也不会把 `tools` 声明的 token 成本算进去，大工具表可能低估）、没有附件保留策略、Harness 请求结构不携带的采样参数无法透传、`arguments` 原样透传意味着上游截断时调用方可能收到不完整的 JSON（这个端点不改写模型输出）。
 
 ## 致谢
 

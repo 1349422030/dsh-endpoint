@@ -74,6 +74,9 @@ export async function startServer(ctx, settings = {}) {
         model: '',
         corsOrigin: '*',
         modelIds: {},
+        // The switch's default: publish everything, expose ignored. Tests that
+        // exercise a whitelist must turn it off explicitly.
+        exposeAll: true,
         expose: [],
         ...settings,
     };

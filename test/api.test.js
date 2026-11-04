@@ -564,7 +564,7 @@ test('an unknown model names the ones that exist', async () => {
         const answer = await post(server.url, { model: 'nope', messages: [{ role: 'user', content: 'hi' }] });
         assert.equal(answer.status, 404);
         assert.equal(answer.json.error.code, 'model_not_found');
-        assert.match(answer.json.error.message, /published model\(s\): p\/m/);
+        assert.match(answer.json.error.message, /lists 1 published model: p\/m/);
     } finally {
         await server.close();
     }
@@ -589,7 +589,10 @@ test('an alias is what the answer calls the model, and the route stays visible i
 
 test('a model left out of the exposure list cannot be used', async () => {
     const rows = [{ provider: 'p', id: 'm', name: 'M' }, { provider: 'p', id: 'other', name: 'Other' }];
-    const server = await startServer(fakeCtx(fakeInfo(), () => textChunks(), rows), { expose: ['p/other'] });
+    const server = await startServer(fakeCtx(fakeInfo(), () => textChunks(), rows), {
+        exposeAll: false,
+        expose: ['p/other'],
+    });
     try {
         // By its published (provider-qualified) name, the unexposed model still routes nowhere.
         const answer = await post(server.url, { model: 'p/m', messages: [{ role: 'user', content: 'hi' }] });

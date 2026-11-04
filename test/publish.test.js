@@ -98,7 +98,7 @@ test('a hand-written alias that steals a route leaves a URL-safe name behind', a
 
 test('the exposure list decides what exists, not merely what is advertised', async () => {
     const ctx = registry();
-    const settings = { expose: ['alpha/*'] };
+    const settings = { exposeAll: false, expose: ['alpha/*'] };
     const rows = await publishedRows(ctx, settings);
     assert.deepEqual(rows.map((row) => row.publicId), ['alpha/deepseek/flash', 'alpha/solo']);
     // Two routes are gone from the list, so they route and list nowhere.
@@ -111,13 +111,13 @@ test('the exposure list decides what exists, not merely what is advertised', asy
 });
 
 test('an exact route in the exposure list publishes only that model', async () => {
-    const rows = await publishedRows(registry(), { expose: ['alpha/solo'] });
+    const rows = await publishedRows(registry(), { exposeAll: false, expose: ['alpha/solo'] });
     assert.deepEqual(rows.map((row) => row.publicId), ['alpha/solo']);
 });
 
 test('an unexposed model is not addressable through the model card either', async () => {
     const ctx = registry();
-    const settings = { expose: ['alpha/solo'] };
+    const settings = { exposeAll: false, expose: ['alpha/solo'] };
     assert.equal(await modelById(ctx, settings, 'alpha/deepseek/flash'), undefined);
     assert.equal(await modelById(ctx, settings, 'solo'), undefined);
     assert.equal((await modelById(ctx, settings, 'alpha/solo')).id, 'alpha/solo');
@@ -136,7 +136,10 @@ test('two models configured with one alias keep two routable names', async () =>
     assert.equal(route.provider, 'beta');
 });
 
-test('an empty exposure list and an empty alias map change nothing', async () => {
+test('the 0.1.4 archive shape stays permissive: expose there is ignored by default', async () => {
+    // An archive written before the switch existed has no exposeAll key and an
+    // empty list. Treating that as "publish nothing" would take every model
+    // offline on upgrade, so a missing key must mean the switch is on.
     const rows = await publishedRows(registry(), { expose: [], modelIds: {} });
     assert.deepEqual(rows.map((row) => row.publicId), [
         'alpha/deepseek/flash',
@@ -157,11 +160,108 @@ test('the profile selection does not break a tie between two models', async () =
     );
 });
 
+test('with the switch on, a restrictive exposure list publishes everything', async () => {
+    // On is authoritative: the list is not a filter, it is dead config kept
+    // only so that turning the switch off later has something to start from.
+    const ctx = registry();
+    const settings = { exposeAll: true, expose: ['alpha/solo'] };
+    const rows = await publishedRows(ctx, settings);
+    assert.deepEqual(rows.map((row) => row.publicId), [
+        'alpha/deepseek/flash',
+        'alpha/solo',
+        'beta/deepseek/flash',
+    ]);
+    const status = await statusRows(ctx, settings);
+    assert.ok(status.every((row) => row.exposed), 'every routable model is exposed');
+});
+
+test('switching it off with an empty list publishes nothing, and that is not a wildcard', async () => {
+    const ctx = registry();
+    const settings = { exposeAll: false, expose: [] };
+    assert.deepEqual(await publishedRows(ctx, settings), []);
+    assert.deepEqual((await listModels(ctx, settings)).data, []);
+    const status = await statusRows(ctx, settings);
+    assert.ok(status.every((row) => row.exposed === false), 'the page still lists every model, all unchecked');
+    // The page must keep offering a placeholder for each one, or the switch
+    // could never be undone from the UI.
+    assert.equal(status.length, 3);
+    assert.ok(status.every((row) => typeof row.publicId === 'string' && row.publicId !== ''));
+    // A named request for a model that exists but is not published is an
+    // ordinary 404 — the same answer any unknown name gets — and its message
+    // names the settings that produce that state instead of trailing off after
+    // a list of nothing.
+    await assert.rejects(
+        resolveRoute(ctx, settings, undefined, 'alpha/solo'),
+        (error) => error.status === 404
+            && error.code === 'model_not_found'
+            && error.message.includes('currently publishes no models'),
+    );
+    // The default-model path has nothing to fall back on, which is the one
+    // place "nothing is published" is reported as a 503 rather than a 404.
+    await assert.rejects(
+        resolveRoute(ctx, settings, undefined, undefined),
+        (error) => error.status === 503 && error.code === 'no_models',
+    );
+    await assert.rejects(
+        resolveRoute(ctx, settings, undefined, 'auto'),
+        (error) => error.status === 503 && error.code === 'no_models',
+    );
+});
+
+test('the 404 message spells the published count in the singular or plural', async () => {
+    const ctx = registry();
+    // One published model reads as English: "lists 1 published model: alpha/solo".
+    await assert.rejects(
+        resolveRoute(ctx, { exposeAll: false, expose: ['alpha/solo'] }, undefined, 'nope'),
+        (error) => error.status === 404
+            && error.message.includes('GET /v1/models lists 1 published model: alpha/solo.'),
+    );
+    // More than one keeps the plural and the comma-separated list.
+    await assert.rejects(
+        resolveRoute(ctx, { exposeAll: false, expose: ['alpha/*'] }, undefined, 'nope'),
+        (error) => error.status === 404
+            && error.message.includes('lists 2 published models: alpha/deepseek/flash, alpha/solo.'),
+    );
+});
+
+test('with the switch off, only the listed models are published', async () => {
+    const ctx = registry();
+    const settings = { exposeAll: false, expose: ['beta/*'] };
+    const rows = await publishedRows(ctx, settings);
+    assert.deepEqual(rows.map((row) => row.publicId), ['beta/deepseek/flash']);
+    assert.deepEqual((await listModels(ctx, settings)).data.map((card) => card.id), ['beta/deepseek/flash']);
+    await assert.rejects(
+        resolveRoute(ctx, settings, undefined, 'alpha/solo'),
+        (error) => error.status === 404 && error.code === 'model_not_found',
+    );
+});
+
+test('an unpublished row whose route is taken is offered a suffixed placeholder', async () => {
+    // The published alias deliberately steals the *route* of a model that is
+    // not published. 0.1.4 fell back to that route once, so the card showed a
+    // name that already answered for a different model; ticking the box then
+    // published under a second choice. The whole directory must stay unique.
+    const settings = {
+        exposeAll: false,
+        expose: ['alpha/*'],
+        modelIds: { 'alpha/solo': 'beta/deepseek/flash' },
+    };
+    const rows = await statusRows(registry(), settings);
+    const byRoute = new Map(rows.map((row) => [row.route, row]));
+    assert.equal(byRoute.get('alpha/solo').publicId, 'beta/deepseek/flash');
+    const placeholder = byRoute.get('beta/deepseek/flash');
+    assert.equal(placeholder.exposed, false);
+    assert.equal(placeholder.publicId, 'beta/deepseek/flash.2');
+    const ids = rows.map((row) => row.publicId);
+    assert.equal(new Set(ids).size, ids.length, `public ids must be unique: ${ids.join(', ')}`);
+});
+
 test('an unpublished row does not advertise a name another model already answers to', async () => {
     // Two models want the same alias; only one of them is exposed. The
     // settings page shows the other one as "would publish as ...", and that
     // placeholder must not be the name that already routes somewhere else.
     const settings = {
+        exposeAll: false,
         expose: ['alpha/*'],
         modelIds: { 'alpha/solo': 'shared', 'beta/deepseek/flash': 'shared' },
     };
