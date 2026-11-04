@@ -38,6 +38,12 @@ test('the profile entry id stays the stable settings namespace', async () => {
     assert.equal(id, 'dsh-endpoint');
 });
 
+test('the client bundle registers under the package name', async () => {
+    const text = readFileSync(new URL('lib/client.js', ROOT), 'utf8');
+    const registered = /__ModuleLoader__\.load\(\{[\s\S]{0,400}?id:\s*'([^']+)'/.exec(text)?.[1];
+    assert.equal(registered, manifest().name);
+});
+
 test('the patch ships in the tarball, since the loader reads it from there', async () => {
     assert.ok(manifest().files.includes('cordis.patch.yml'));
 });

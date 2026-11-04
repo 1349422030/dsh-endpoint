@@ -7,6 +7,7 @@
  * the module registers, the slot is taken, and the four settings render.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 /**
@@ -49,7 +50,10 @@ test('the client half registers a settings page that renders the endpoint fields
     let registration;
     globalThis.window = { __ModuleLoader__: { load: (entry) => { registration = entry; } } };
     await import('../lib/client.js');
-    assert.equal(registration.id, 'dsh-endpoint');
+    // The boot graph addresses this bundle by package name; register under
+    // anything else and the page reports the plugin as failed to load.
+    const manifestName = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).name;
+    assert.equal(registration.id, manifestName);
     const module = registration.factory((specifier) => {
         if (specifier === 'react') return stubReact();
         throw new Error(`unexpected require("${specifier}")`);
